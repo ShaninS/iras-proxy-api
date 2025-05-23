@@ -1,50 +1,42 @@
-const https = require('https');
+import type { NextApiRequest, NextApiResponse } from 'next'
+import https from 'https'
 
-module.exports = async (req, res) => {
-  // 1. টার্গেট IRAS বেস URL (ডাবল স্ল্যাশ সহ)
-  const IRAS_BASE_URL = 'https://iras.iub.edu.bd:8079/'; // নোট: শেষে স্ল্যাশ
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  const IRAS_BASE_URL = 'https://iras.iub.edu.bd:8079/'
 
-  // 2. রিকুয়েস্ট পাথ প্রসেসিং
-  let path = req.url.replace('/api/proxy', '');
-  
-  // 3. ডাবল স্ল্যাশ ফোর্স করুন (যদি ইতিমধ্যে না থাকে)
-  if (!path.startsWith('/')) {
-    path = '/' + path;
-  }
-  path = path.replace(/^\//, '//'); // সিঙ্গেল স্ল্যাশ → ডাবল স্ল্যাশ
+  // Remove /api/proxy from path and replace single slash with double slash
+  let path = req.url?.replace(/^\/api\/proxy/, '') || '/'
+  path = path.startsWith('/') ? '/' + path : path
+  path = path.replace(/^\//, '//') // force double slash
 
-  // 4. ফাইনাল URL
-  const targetUrl = `${IRAS_BASE_URL}${path}`.replace(/([^:]\/)\/+/g, '$1'); // ট্রিপল স্ল্যাশ এভয়েড
+  const targetUrl = `${IRAS_BASE_URL}${path}`.replace(/([^:]\/)\/+/g, '$1') // avoid triple slashes
 
-  console.log('Proxying to:', targetUrl); // ডিবাগ লগ
-
-  // 5. HTTPS রিকুয়েস্ট
   const options = {
     method: req.method,
     headers: {
       ...req.headers,
       host: 'iras.iub.edu.bd',
-      'Accept': 'application/json',
+      Accept: 'application/json',
       'Content-Type': 'application/json',
-      'Referer': 'https://irasv1.iub.edu.bd/'
+      Referer: 'https://irasv1.iub.edu.bd/',
     },
-    rejectUnauthorized: false
-  };
-
-  const proxyReq = https.request(targetUrl, options, (proxyRes) => {
-    res.writeHead(proxyRes.statusCode, proxyRes.headers);
-    proxyRes.pipe(res, { end: true });
-  });
-
-  proxyReq.on('error', (error) => {
-    console.error('Proxy error:', error);
-    res.status(502).json({ error: 'Bad Gateway' });
-  });
-
-  // বডি ডাটা সেন্ড (POST/PUT/PATCH)
-  if (req.body && ['POST', 'PUT', 'PATCH'].includes(req.method)) {
-    proxyReq.write(JSON.stringify(req.body));
+    rejectUnauthorized: false,
   }
 
-  proxyReq.end();
-};
+  const proxyReq = https.request(targetUrl, options, (proxyRes) => {
+    res.writeHead(proxyRes.statusCode || 500, proxyRes.headers)
+    proxyRes.pipe(res, { end: true })
+  })
+
+  proxyReq.on('error', (err) => {
+    console.error('Proxy error:', err)
+    res.status(502).json({ error: 'Bad Gateway', details: err.message })
+  })
+
+  // Pipe the original request body
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    req.pipe(proxyReq)
+  } else {
+    proxyReq.end()
+  }
+}
