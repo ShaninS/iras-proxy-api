@@ -1,13 +1,16 @@
 export default async function handler(req, res) {
   try {
-    const url = "http://iras.iub.edu.bd:8079";
+    // This ensures the full path, including double slashes, is preserved
+    const url = "http://iras.iub.edu.bd:8079" + req.url;
+
     const response = await fetch(url, {
       method: req.method,
       headers: {
         ...req.headers,
         host: "iras.iub.edu.bd",
       },
-      body: req.method !== "GET" ? req.body : undefined,
+      body: req.method !== "GET" && req.method !== "HEAD" ? req.body : undefined,
+      redirect: "follow"
     });
 
     const data = await response.text();
