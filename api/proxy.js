@@ -1,7 +1,7 @@
 const https = require('https');
 
 module.exports = (req, res) => {
-  const IRAS_BASE_URL = 'https://iras.iub.edu.bd:8079';
+  const IRAS_BASE_URL = 'https://iras.iub.edu.bd:8079/';
 
   // Fix: remove only leading /api to avoid double slashes
   let path = req.url.replace(/^\/api/, ''); 
