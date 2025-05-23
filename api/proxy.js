@@ -1,42 +1,49 @@
-import type { NextApiRequest, NextApiResponse } from 'next'
-import https from 'https'
+const https = require('https');
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const IRAS_BASE_URL = 'https://iras.iub.edu.bd:8079/'
+module.exports = (req, res) => {
+  const IRAS_BASE_URL = 'https://iras.iub.edu.bd:8079';
 
-  // Remove /api/proxy from path and replace single slash with double slash
-  let path = req.url?.replace(/^\/api\/proxy/, '') || '/'
-  path = path.startsWith('/') ? '/' + path : path
-  path = path.replace(/^\//, '//') // force double slash
+  // Step 1: Extract path from request
+  let path = req.url.replace('/api', '');
+  if (!path.startsWith('/')) {
+    path = '/' + path;
+  }
 
-  const targetUrl = `${IRAS_BASE_URL}${path}`.replace(/([^:]\/)\/+/g, '$1') // avoid triple slashes
+  const targetUrl = IRAS_BASE_URL + path;
 
+  // Step 2: Setup HTTPS options
   const options = {
     method: req.method,
     headers: {
       ...req.headers,
       host: 'iras.iub.edu.bd',
-      Accept: 'application/json',
+      'Accept': 'application/json',
       'Content-Type': 'application/json',
-      Referer: 'https://irasv1.iub.edu.bd/',
+      'Referer': 'https://irasv1.iub.edu.bd/',
     },
-    rejectUnauthorized: false,
-  }
+    rejectUnauthorized: false
+  };
 
+  // Step 3: Make proxy request
   const proxyReq = https.request(targetUrl, options, (proxyRes) => {
-    res.writeHead(proxyRes.statusCode || 500, proxyRes.headers)
-    proxyRes.pipe(res, { end: true })
-  })
+    res.writeHead(proxyRes.statusCode, proxyRes.headers);
+    proxyRes.pipe(res, { end: true });
+  });
 
-  proxyReq.on('error', (err) => {
-    console.error('Proxy error:', err)
-    res.status(502).json({ error: 'Bad Gateway', details: err.message })
-  })
+  proxyReq.on('error', (error) => {
+    console.error('Proxy error:', error);
+    res.status(502).json({ error: 'Bad Gateway' });
+  });
 
-  // Pipe the original request body
-  if (req.method !== 'GET' && req.method !== 'HEAD') {
-    req.pipe(proxyReq)
+  // Step 4: Send request body if needed
+  if (['POST', 'PUT', 'PATCH'].includes(req.method)) {
+    let body = '';
+    req.on('data', chunk => (body += chunk));
+    req.on('end', () => {
+      proxyReq.write(body);
+      proxyReq.end();
+    });
   } else {
-    proxyReq.end()
+    proxyReq.end();
   }
-}
+};
